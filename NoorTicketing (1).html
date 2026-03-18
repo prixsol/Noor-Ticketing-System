@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Noor Ticketing System</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter','system-ui','sans-serif'], mono: ['DM Mono','monospace'] },
+      colors: {
+        noor: { 50:'#fffbeb',100:'#fef3c7',200:'#fde68a',300:'#fcd34d',400:'#fbbf24',500:'#f59e0b',600:'#d97706',700:'#b45309',800:'#92400e',900:'#78350f' },
+        ink:  { 50:'#f8f7ff',100:'#ede9fe',200:'#ddd6fe',300:'#c4b5fd',400:'#a78bfa',500:'#8b5cf6',600:'#7c3aed',700:'#6d28d9',800:'#4c1d95',900:'#2e1065' }
+      }
+    }
+  }
+}
+</script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:#f5f4f1}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:#f1f1f0}
+::-webkit-scrollbar-thumb{background:#d1cec8;border-radius:99px}
+.fade{animation:fadeUp .2s ease both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.slide{animation:slideIn .25s ease both}
+@keyframes slideIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+.spin{animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.glass{backdrop-filter:blur(12px)}
+.msg-bubble-user{background:#f0fdf4;border-radius:18px 18px 4px 18px}
+.msg-bubble-admin{background:#fef9ec;border-radius:18px 18px 18px 4px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
+
+/* ══════════════════════════════════════════════
+   DEMO ACCOUNTS
+══════════════════════════════════════════════ */
+const DEMO_ACCOUNTS = [
+  { id:'A1', name:'System Admin', email:'admin@noor.ae',   password:'Admin123',   role:'Admin',      branch:null,  empId:'EMP-001', av:'SA' },
+  { id:'U1', name:'Ahmed Al-Farsi', email:'ahmed@noor.ae', password:'Ahmed123',   role:'End-User',   branch:'BR1', empId:'EMP-101', av:'AA' },
+  { id:'U2', name:'Sara Hassan',    email:'sara@noor.ae',  password:'Sara123',    role:'End-User',   branch:'BR2', empId:'EMP-102', av:'SH' },
+  { id:'U3', name:'Omar Khalid',    email:'omar@noor.ae',  password:'Omar123',    role:'Agent',      branch:'BR1', empId:'EMP-201', av:'OK' },
+  { id:'U4', name:'Fatima Al-Ali',  email:'fatima@noor.ae',password:'Fatima123',  role:'Supervisor', branch:'BR3', empId:'EMP-301', av:'FA' },
+];
+
+const BRANCHES = [
+  {id:'BR1',code:'BR1',name:'Al Barsha Clinic',    city:'Dubai',     phone:'+971 4 111 0001',email:'albarsha@noor.ae',  manager:'Ahmed Al-Farsi',active:true},
+  {id:'BR2',code:'BR2',name:'Deira Medical',       city:'Dubai',     phone:'+971 4 111 0002',email:'deira@noor.ae',     manager:'Sara Hassan',   active:true},
+  {id:'BR3',code:'BR3',name:'Jumeirah Health',     city:'Dubai',     phone:'+971 4 111 0003',email:'jumeirah@noor.ae',  manager:'Fatima Al-Ali', active:true},
+  {id:'BR4',code:'BR4',name:'Bur Dubai Centre',    city:'Dubai',     phone:'+971 4 111 0004',email:'burdubai@noor.ae',  manager:'Khalid Saeed',  active:true},
+  {id:'BR5',code:'BR5',name:'Sharjah Clinic',      city:'Sharjah',   phone:'+971 6 111 0005',email:'sharjah@noor.ae',   manager:'Omar Abdullah', active:true},
+  {id:'BR6',code:'BR6',name:'Abu Dhabi North',     city:'Abu Dhabi', phone:'+971 2 111 0006',email:'abudhabi@noor.ae',  manager:'Layla Saeed',   active:true},
+  {id:'BR7',code:'BR7',name:'Ajman Branch',        city:'Ajman',     phone:'+971 6 111 0007',email:'ajman@noor.ae',     manager:'Hessa Nasser',  active:false},
+  {id:'BR8',code:'BR8',name:'Al Ain Clinic',       city:'Al Ain',    phone:'+971 3 111 0008',email:'alain@noor.ae',     manager:'Mohammed Ali',  active:true},
+];
+
+const ASSET_TYPES = ['PC / Desktop','Laptop','Keyboard','Mouse','HID Reader','Charger','Scanner','Printer','Software License','Phone','SIM Card','Monitor','UPS','Network Switch'];
+const CATS = ['Hardware Failure','Software Issue','Network Problem','Access Request','Printer Issue','Email Problem','New Setup','Maintenance','Other'];
+const TITLES = ['Printer not responding','Cannot access patient system','Monitor display issue','Keyboard not working','Network slow','New staff laptop setup','HID reader not scanning','Email not syncing','Scanner driver needed','UPS beeping','Mouse cursor freezing','Software license expired','Phone line static','SIM data issue','PC not booting'];
+
+const ROLE_PERMS = {
+  'End-User':   ['my_tickets','my_assets','messages'],
+  'Agent':      ['tickets','assets','messages','reports'],
+  'Supervisor': ['dashboard','tickets','assets','users','messages','reports'],
+  'Admin':      ['dashboard','tickets','assets','users','branches','reports','settings','master','messages'],
+};
+
+function mkTickets(uid=null){
+  return Array.from({length:18},(_,i)=>({
+    id:`NTS-${1000+i}`,
+    title:TITLES[i%TITLES.length],
+    status:['NEW','ASSIGNED','IN_PROGRESS','PENDING_CUSTOMER','ESCALATED','RESOLVED','CLOSED'][i%7],
+    priority:['P1','P2','P3','P4'][i%4],
+    category:CATS[i%CATS.length],
+    branch:BRANCHES[i%8].id, branchName:BRANCHES[i%8].name,
+    createdBy:'U1', createdByName:'Ahmed Al-Farsi',
+    assignedTo:i%3===0?null:'U3', assignedToName:i%3===0?null:'Omar Khalid',
+    createdAt:new Date(Date.now()-(i*72000000)).toISOString(),
+    slaBreachAt:new Date(Date.now()+((5-i%6)*3600000)).toISOString(),
+    description:`Issue reported at ${BRANCHES[i%8].name}. Category: ${CATS[i%CATS.length]}. Please investigate and resolve as soon as possible.`,
+    comments: i%3===0?[]: [
+      {id:`cm${i}a`,authorId:'U3',authorName:'Omar Khalid',av:'OK',body:'Received your request. Looking into it now.',time:new Date(Date.now()-7200000).toISOString(),internal:false},
+      {id:`cm${i}b`,authorId:'A1',authorName:'System Admin', av:'SA',body:'Assigned to Omar. Priority escalated.',time:new Date(Date.now()-3600000).toISOString(),internal:true},
+    ],
+    timeline:[
+      {event:'Ticket created',by:'Ahmed Al-Farsi',at:new Date(Date.now()-i*72000000).toISOString(),icon:'create'},
+      {event:'Assigned to Omar Khalid',by:'System Admin',at:new Date(Date.now()-i*72000000+3600000).toISOString(),icon:'assign'},
+      ...(i%4===0?[{event:'Status changed to In Progress',by:'Omar Khalid',at:new Date(Date.now()-i*72000000+7200000).toISOString(),icon:'status'}]:[]),
+    ]
+  }));
+}
+
+function mkAssets(){
+  const st=['AVAILABLE','ASSIGNED','IN_REPAIR','RETIRED'];
+  const employees=[
+    {empId:'EMP-101',empName:'Ahmed Al-Farsi'},
+    {empId:'EMP-102',empName:'Sara Hassan'},
+    {empId:'EMP-201',empName:'Omar Khalid'},
+    {empId:'EMP-301',empName:'Fatima Al-Ali'},
+    {empId:'EMP-401',empName:'Khalid Saeed'},
+    {empId:'EMP-501',empName:'Layla Nasser'},
+  ];
+  const out=[];
+  BRANCHES.forEach((b,bi)=>{
+    ASSET_TYPES.slice(0,8).forEach((t,ai)=>{
+      const emp=employees[(bi+ai)%employees.length];
+      out.push({
+        id:`A-${b.code}-${ai}`, tag:`${b.code}-${t.slice(0,3).toUpperCase()}-${String(bi*8+ai+1).padStart(3,'0')}`,
+        name:`${t} #${bi*8+ai+1}`, type:t, branch:b.id, branchName:b.name,
+        empId:ai%3===0?emp.empId:null, empName:ai%3===0?emp.empName:null,
+        serial:`SN${Math.random().toString(36).slice(2,9).toUpperCase()}`,
+        status:st[(bi+ai)%4], purchaseDate:'2023-06-01', warrantyExpiry:'2026-06-01', notes:''
+      });
+    });
+  });
+  return out;
+}
+
+function mkMessages(){
+  return [
+    {id:'m1',fromId:'U1',fromName:'Ahmed Al-Farsi',fromAv:'AA',toId:'A1',body:'Hi Admin, I need help setting up my new workstation. Can you assist?',at:new Date(Date.now()-86400000).toISOString(),read:true},
+    {id:'m2',fromId:'A1',fromName:'System Admin',fromAv:'SA',toId:'U1',body:'Sure Ahmed! Please raise a ticket under "New Setup" category and I will assign it to the IT team right away.',at:new Date(Date.now()-82800000).toISOString(),read:true},
+    {id:'m3',fromId:'U1',fromName:'Ahmed Al-Farsi',fromAv:'AA',toId:'A1',body:'Done, ticket NTS-1007 created. Thank you!',at:new Date(Date.now()-79200000).toISOString(),read:true},
+    {id:'m4',fromId:'U2',fromName:'Sara Hassan',fromAv:'SH',toId:'A1',body:'Admin, my laptop keeps restarting randomly since yesterday. Is this a known issue?',at:new Date(Date.now()-43200000).toISOString(),read:false},
+    {id:'m5',fromId:'U1',fromName:'Ahmed Al-Farsi',fromAv:'AA',toId:'A1',body:'Also, when can I expect the software license to be renewed? It expires soon.',at:new Date(Date.now()-7200000).toISOString(),read:false},
+  ];
+}
+
+/* ══════════════════════════════════════════════
+   ICONS
+══════════════════════════════════════════════ */
+const Ic={
+  Noor:()=><svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M12 2L9.5 8.5H3l5 4-2 7 6-4.5 6 4.5-2-7 5-4h-6.5L12 2z"/></svg>,
+  Grid:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>,
+  Ticket:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M15 5v2M15 11v2M15 17v2M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V7a2 2 0 0 1 2-2z"/></svg>,
+  Box:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="m16.5 9.4-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
+  Users:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+  Building:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
+  Bar:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>,
+  Gear:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+  Sliders:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>,
+  Chat:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+  Bell:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
+  Plus:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="w-4 h-4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  Search:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="w-4 h-4"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+  X:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+  Check:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="20 6 9 17 4 12"/></svg>,
+  Eye:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
+  EyeOff:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>,
+  Edit:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+  Trash:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>,
+  Save:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
+  Send:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
+  Lock:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,
+  Mail:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>,
+  Alert:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+  Clock:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+  Shield:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+  Activity:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+  ChevR:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="9 18 15 12 9 6"/></svg>,
+  ChevD:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="6 9 12 15 18 9"/></svg>,
+  Logout:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
+  Key:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
+  Tag:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>,
+  Person:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+  Download:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+  CheckCircle:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
+  Refresh:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 spin"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>,
+  Info:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>,
+  Toggle:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><rect x="1" y="5" width="22" height="14" rx="7" ry="7"/><circle cx="16" cy="12" r="3"/></svg>,
+  Layers:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>,
+  Star:()=><svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-noor-500"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+};
+
+/* ══════════════════════════════════════════════
+   UI PRIMITIVES
+══════════════════════════════════════════════ */
+const StatusCfg = {
+  NEW:{l:'New',c:'bg-blue-50 text-blue-700 ring-1 ring-blue-200'},
+  ASSIGNED:{l:'Assigned',c:'bg-violet-50 text-violet-700 ring-1 ring-violet-200'},
+  IN_PROGRESS:{l:'In Progress',c:'bg-amber-50 text-amber-700 ring-1 ring-amber-200'},
+  PENDING_CUSTOMER:{l:'Pending',c:'bg-orange-50 text-orange-700 ring-1 ring-orange-200'},
+  ESCALATED:{l:'Escalated',c:'bg-red-50 text-red-700 ring-1 ring-red-200'},
+  RESOLVED:{l:'Resolved',c:'bg-green-50 text-green-700 ring-1 ring-green-200'},
+  CLOSED:{l:'Closed',c:'bg-gray-100 text-gray-500 ring-1 ring-gray-200'},
+};
+const PriorityCfg = {
+  P1:{l:'Critical',c:'bg-red-100 text-red-700 ring-1 ring-red-200',dot:'bg-red-500'},
+  P2:{l:'High',c:'bg-orange-100 text-orange-700 ring-1 ring-orange-200',dot:'bg-orange-500'},
+  P3:{l:'Medium',c:'bg-yellow-100 text-yellow-700 ring-1 ring-yellow-200',dot:'bg-yellow-500'},
+  P4:{l:'Low',c:'bg-gray-100 text-gray-600 ring-1 ring-gray-200',dot:'bg-gray-400'},
+};
+const AssetStatusCfg = {
+  AVAILABLE:{c:'bg-green-50 text-green-700 ring-1 ring-green-200'},
+  ASSIGNED:{c:'bg-blue-50 text-blue-700 ring-1 ring-blue-200'},
+  IN_REPAIR:{c:'bg-amber-50 text-amber-700 ring-1 ring-amber-200'},
+  RETIRED:{c:'bg-gray-100 text-gray-500 ring-1 ring-gray-200'},
+};
+
+const Bdg=({v,type='s'})=>{
+  const cfg=type==='p'?PriorityCfg[v]:type==='a'?AssetStatusCfg[v]:StatusCfg[v];
+  if(!cfg)return null;
+  return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${cfg.c}`}>
+    {type==='p'&&<span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`}/>}
+    {cfg.l||(v||'').replace(/_/g,' ')}
+  </span>;
+};
+
+const Av=({s,size='sm',color='gold'})=>{
+  const sz={xs:'w-6 h-6 text-xs',sm:'w-8 h-8 text-xs',md:'w-10 h-10 text-sm',lg:'w-12 h-12 text-sm'};
+  const col={gold:'bg-noor-100 text-noor-700',violet:'bg-ink-100 text-ink-700',teal:'bg-teal-100 text-teal-700',green:'bg-green-100 text-green-700',gray:'bg-gray-100 text-gray-600'};
+  return <div className={`${sz[size]} ${col[color]||col.gold} rounded-full flex items-center justify-center font-bold flex-shrink-0`}>{s}</div>;
+};
+
+const Btn=({children,onClick,variant='primary',size='md',icon:I2,disabled,loading,type='button',fullWidth})=>{
+  const sz={xs:'px-2.5 py-1 text-xs gap-1',sm:'px-3.5 py-1.5 text-sm gap-1.5',md:'px-4 py-2 text-sm gap-1.5',lg:'px-5 py-2.5 text-sm gap-2'};
+  const vr={
+    primary:'bg-noor-500 hover:bg-noor-600 text-white shadow-sm shadow-noor-200',
+    secondary:'bg-white hover:bg-gray-50 text-gray-700 ring-1 ring-inset ring-gray-200',
+    danger:'bg-red-600 hover:bg-red-700 text-white',
+    ghost:'text-gray-600 hover:bg-gray-100',
+    outline:'ring-1 ring-noor-400 text-noor-700 hover:bg-noor-50',
+    dark:'bg-gray-800 hover:bg-gray-900 text-white',
+  };
+  return <button type={type} onClick={onClick} disabled={disabled||loading} className={`inline-flex items-center justify-center font-semibold rounded-xl transition-all ${sz[size]} ${vr[variant]} ${fullWidth?'w-full':''} ${disabled||loading?'opacity-50 cursor-not-allowed':''}`}>
+    {loading?<Ic.Refresh/>:I2?<I2/>:null}{children}
+  </button>;
+};
+
+const Input=({label,type='text',value,onChange,placeholder,icon:I2,required,hint,disabled,autoFocus})=>(
+  <div className="space-y-1.5">
+    {label&&<label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}{required&&<span className="text-red-400 ml-0.5">*</span>}</label>}
+    <div className="relative">
+      {I2&&<div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><I2/></div>}
+      <input autoFocus={autoFocus} type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
+        className={`w-full ${I2?'pl-9':'pl-3'} pr-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-white text-gray-800 placeholder-gray-400 focus:border-noor-400 focus:ring-2 focus:ring-noor-100 outline-none transition-all ${disabled?'bg-gray-50 text-gray-400':''}`}/>
+    </div>
+    {hint&&<p className="text-xs text-gray-400">{hint}</p>}
+  </div>
+);
+
+const Select=({label,value,onChange,options,placeholder,required})=>(
+  <div className="space-y-1.5">
+    {label&&<label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}{required&&<span className="text-red-400 ml-0.5">*</span>}</label>}
+    <select value={value} onChange={e=>onChange(e.target.value)} className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-white text-gray-800 focus:border-noor-400 focus:ring-2 focus:ring-noor-100 outline-none">
+      {placeholder&&<option value="">{placeholder}</option>}
+      {options.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+    </select>
+  </div>
+);
+
+const Toggle=({value,onChange,label,desc})=>(
+  <div className="flex items-start gap-3">
+    <button onClick={()=>onChange(!value)} className={`mt-0.5 relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${value?'bg-noor-500':'bg-gray-300'}`}>
+      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${value?'left-5':'left-0.5'}`}/>
+    </button>
+    {label&&<div><p className="text-sm font-medium text-gray-700">{label}</p>{desc&&<p className="text-xs text-gray-400 mt-0.5">{desc}</p>}</div>}
+  </div>
+);
+
+const Modal=({open,onClose,title,children,size='md'})=>{
+  if(!open)return null;
+  const sz={sm:'max-w-md',md:'max-w-lg',lg:'max-w-2xl',xl:'max-w-4xl'};
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="absolute inset-0 bg-black/40 glass" onClick={onClose}/>
+    <div className={`relative w-full ${sz[size]} bg-white rounded-2xl shadow-2xl max-h-[90vh] flex flex-col fade`}>
+      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+        <h2 className="text-sm font-bold text-gray-800">{title}</h2>
+        <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors"><Ic.X/></button>
+      </div>
+      <div className="overflow-y-auto flex-1 p-6">{children}</div>
+    </div>
+  </div>;
+};
+
+const Toast=({msg,type='success',onClose})=>{
+  useEffect(()=>{const t=setTimeout(onClose,3500);return()=>clearTimeout(t);},[]);
+  const cfg={success:{c:'bg-green-50 border-green-200 text-green-800',I:Ic.CheckCircle},error:{c:'bg-red-50 border-red-200 text-red-800',I:Ic.Alert},info:{c:'bg-blue-50 border-blue-200 text-blue-800',I:Ic.Info}};
+  const {c,I}=cfg[type]||cfg.info;
+  return <div className={`fixed bottom-5 right-5 z-[200] flex items-center gap-2 px-4 py-3 rounded-xl border text-sm font-semibold shadow-xl fade max-w-sm ${c}`}><I/><span className="flex-1">{msg}</span><button onClick={onClose} className="opacity-60 hover:opacity-100 ml-1"><Ic.X/></button></div>;
+};
+
+/* ══════════════════════════════════════════════
+   LOGIN PAGE
+══════════════════════════════════════════════ */
+const LoginPage=({onLogin})=>{
+  const [email,setEmail]=useState('');const [pw,setPw]=useState('');const [showPw,setShowPw]=useState(false);const [err,setErr]=useState('');const [loading,setLoading]=useState(false);
+  const submit=async(e)=>{
+    e&&e.preventDefault();
+    if(!email||!pw){setErr('Please enter email and password');return;}
+    setLoading(true);setErr('');
+    await new Promise(r=>setTimeout(r,900));
+    const user=DEMO_ACCOUNTS.find(u=>u.email===email.trim().toLowerCase()&&u.password===pw);
+    if(user){onLogin(user);}else{setErr('Invalid email or password. Please try again.');setLoading(false);}
+  };
+  const quick=(u)=>{setEmail(u.email);setPw(u.password);};
+  return <div className="min-h-screen bg-gradient-to-br from-noor-50 via-white to-ink-50 flex items-center justify-center p-4">
+    <div className="w-full max-w-md fade">
+      {/* Logo */}
+      <div className="text-center mb-8">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-noor-400 to-noor-600 shadow-lg shadow-noor-200 mb-4">
+          <Ic.Noor/><span className="text-white text-2xl">✦</span>
+        </div>
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Noor Ticketing System</h1>
+        <p className="text-sm text-gray-500 mt-1">نظام تذاكر نور — Clinic Support Portal</p>
+      </div>
+      {/* Card */}
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+        <h2 className="text-base font-bold text-gray-800 mb-5">Sign in to your account</h2>
+        <form onSubmit={submit} className="space-y-4">
+          <Input label="Email Address" type="email" value={email} onChange={setEmail} placeholder="your.email@noor.ae" icon={Ic.Mail} required autoFocus/>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">Password <span className="text-red-400">*</span></label>
+            <div className="relative">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Ic.Lock/></div>
+              <input type={showPw?'text':'password'} value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••" className="w-full pl-9 pr-10 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:border-noor-400 focus:ring-2 focus:ring-noor-100 outline-none"/>
+              <button type="button" onClick={()=>setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">{showPw?<Ic.EyeOff/>:<Ic.Eye/>}</button>
+            </div>
+          </div>
+          {err&&<div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2"><Ic.Alert/>{err}</div>}
+          <Btn type="submit" loading={loading} fullWidth size="lg">Sign In</Btn>
+        </form>
+        {/* Quick logins */}
+        <div className="mt-6 pt-5 border-t border-gray-100">
+          <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-3">Quick Demo Login</p>
+          <div className="space-y-2">
+            {DEMO_ACCOUNTS.slice(0,3).map(u=><button key={u.id} onClick={()=>quick(u)} className="w-full flex items-center gap-3 px-3 py-2 rounded-xl border border-gray-100 hover:border-noor-200 hover:bg-noor-50 text-left transition-all group">
+              <Av s={u.av} size="sm" color={u.role==='Admin'?'violet':'gold'}/>
+              <div className="flex-1 min-w-0"><p className="text-xs font-semibold text-gray-700">{u.name}</p><p className="text-xs text-gray-400">{u.role} · {u.email}</p></div>
+              <Ic.ChevR/>
+            </button>)}
+          </div>
+        </div>
+      </div>
+      <p className="text-center text-xs text-gray-400 mt-6">© 2025 Noor Clinic Group · All rights reserved</p>
+    </div>
+  </div>;
+};
+
+/* ══════════════════════════════════════════════
+   SIDEBAR
+══════════════════════════════════════════════ */
+const NAV_ADMIN=[
+  {id:'dashboard',l:'Dashboard',I:Ic.Grid},
+  {id:'tickets',l:'All Tickets',I:Ic.Ticket,badge:'tickets'},
+  {id:'assets',l:'Assets',I:Ic.Box},
+  {id:'users',l:'Users',I:Ic.Users},
+  {id:'branches',l:'Branches',I:Ic.Building},
+  {id:'reports',l:'Reports',I:Ic.Bar},
+  {id:'messages',l:'Messages',I:Ic.Chat,badge:'messages'},
+  {id:'settings',l:'Settings',I:Ic.Gear},
+  {id:'master',l:'Master Config',I:Ic.Sliders},
+];
+const NAV_USER=[
+  {id:'my_tickets',l:'My Tickets',I:Ic.Ticket,badge:'tickets'},
+  {id:'my_assets',l:'My Assets',I:Ic.Box},
+  {id:'messages',l:'Messages',I:Ic.Chat,badge:'messages'},
+];
+
+const Sidebar=({user,page,setPage,collapsed,setCollapsed,counts,onLogout})=>{
+  const nav=user.role==='Admin'||user.role==='Supervisor'||user.role==='Agent'?NAV_ADMIN.filter(n=>ROLE_PERMS[user.role]?.includes(n.id)):NAV_USER;
+  return <aside className={`fixed left-0 top-0 h-screen bg-gray-900 flex flex-col transition-all duration-300 z-40 ${collapsed?'w-16':'w-60'}`}>
+    {/* Logo */}
+    <div className={`flex items-center gap-3 px-4 py-5 border-b border-gray-800 flex-shrink-0 ${collapsed?'justify-center':''}`}>
+      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-noor-400 to-noor-600 flex items-center justify-center flex-shrink-0 text-white text-sm font-bold">✦</div>
+      {!collapsed&&<div><p className="text-sm font-bold text-white leading-none">Noor</p><p className="text-xs text-gray-400 mt-0.5">Ticketing System</p></div>}
+    </div>
+    {/* Nav */}
+    <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
+      {nav.map(({id,l,I:Icon,badge})=>{
+        const active=page===id;const cnt=badge?counts[badge]||0:0;
+        return <button key={id} onClick={()=>setPage(id)} title={collapsed?l:undefined} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${active?'bg-noor-500/20 text-noor-300':'text-gray-400 hover:bg-gray-800 hover:text-gray-200'}`}>
+          <div className="flex-shrink-0 relative"><Icon/>{cnt>0&&collapsed&&<span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full text-white text-[9px] flex items-center justify-center font-bold">{cnt}</span>}</div>
+          {!collapsed&&<><span className="text-sm font-medium flex-1 text-left">{l}</span>{cnt>0&&<span className="bg-red-500 text-white text-[11px] px-1.5 py-0.5 rounded-full font-bold">{cnt}</span>}</>}
+        </button>;
+      })}
+    </nav>
+    {/* Footer */}
+    <div className={`p-3 border-t border-gray-800 space-y-2 flex-shrink-0`}>
+      {!collapsed&&<div className="flex items-center gap-2 px-2 py-2 rounded-xl bg-gray-800">
+        <Av s={user.av} size="sm" color={user.role==='Admin'?'violet':'gold'}/>
+        <div className="flex-1 min-w-0"><p className="text-xs font-bold text-white truncate">{user.name}</p><p className="text-xs text-gray-400">{user.role}</p></div>
+      </div>}
+      <button onClick={onLogout} title={collapsed?'Logout':undefined} className={`w-full flex items-center ${collapsed?'justify-center':''} gap-2 px-3 py-2 rounded-xl text-gray-400 hover:bg-red-500/20 hover:text-red-400 text-xs transition-all`}><Ic.Logout/>{!collapsed&&'Sign out'}</button>
+      <button onClick={()=>setCollapsed(!collapsed)} className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl text-gray-500 hover:bg-gray-800 hover:text-gray-300 text-xs transition-all`}>{collapsed?'→':'←'}</button>
+    </div>
+  </aside>;
+};
+
+/* ══════════════════════════════════════════════
+   DASHBOARD (Admin)
+══════════════════════════════════════════════ */
+const Dashboard=({tickets,setPage,setSelT})=>{
+  const open=tickets.filter(t=>!['CLOSED','RESOLVED','CANCELLED'].includes(t.status)).length;
+  const esc=tickets.filter(t=>t.status==='ESCALATED').length;
+  const res=tickets.filter(t=>t.status==='RESOLVED').length;
+  const sla=tickets.filter(t=>new Date(t.slaBreachAt)<new Date()&&!['CLOSED','CANCELLED'].includes(t.status));
+  const bStats=BRANCHES.map(b=>({...b,open:tickets.filter(t=>t.branch===b.id&&!['CLOSED','RESOLVED','CANCELLED'].includes(t.status)).length}));
+  const SC=({l,v,c,Ic:Icon})=><div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+    <div className="flex items-start justify-between"><div><p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{l}</p><p className="text-3xl font-bold text-gray-900 mt-1.5">{v}</p></div><div className={`w-10 h-10 rounded-xl ${c} flex items-center justify-center`}><Icon/></div></div>
+  </div>;
+  return <div className="space-y-6 fade">
+    <div className="flex items-center justify-between"><div><h1 className="text-xl font-bold text-gray-900">Dashboard</h1><p className="text-sm text-gray-500 mt-0.5">All 8 branches — live overview</p></div><Btn size="sm" icon={Ic.Plus} onClick={()=>setPage('create_ticket')}>New Ticket</Btn></div>
+    {sla.length>0&&<div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex gap-3 items-start"><div className="text-red-500 mt-0.5"><Ic.Alert/></div><div><p className="text-sm font-bold text-red-800">{sla.length} ticket(s) have breached SLA</p><div className="flex gap-2 mt-2 flex-wrap">{sla.slice(0,5).map(t=><button key={t.id} onClick={()=>{setSelT(t);setPage('ticket_detail');}} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-lg font-bold hover:bg-red-200">{t.id}</button>)}</div></div></div>}
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <SC l="Total Tickets" v={tickets.length} c="bg-blue-50 text-blue-500" Ic={Ic.Ticket}/>
+      <SC l="Open" v={open} c="bg-noor-50 text-noor-600" Ic={Ic.Clock}/>
+      <SC l="Escalated" v={esc} c="bg-red-50 text-red-500" Ic={Ic.Alert}/>
+      <SC l="Resolved" v={res} c="bg-green-50 text-green-600" Ic={Ic.CheckCircle}/>
+    </div>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50"><h3 className="text-sm font-bold text-gray-700">Recent Tickets</h3><button onClick={()=>setPage('tickets')} className="text-xs text-noor-600 font-semibold hover:underline">View all →</button></div>
+        <div>{tickets.slice(0,6).map(t=><button key={t.id} onClick={()=>{setSelT(t);setPage('ticket_detail');}} className="w-full flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors group text-left border-b border-gray-50 last:border-0">
+          <div className="flex-1 min-w-0"><div className="flex items-center gap-2"><span className="font-mono text-xs font-bold text-noor-600">{t.id}</span><Bdg v={t.priority} type="p"/></div><p className="text-sm text-gray-700 font-medium truncate mt-0.5">{t.title}</p><p className="text-xs text-gray-400">{t.branchName}</p></div>
+          <Bdg v={t.status}/>
+        </button>)}</div>
+      </div>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
+        <div className="px-5 py-4 border-b border-gray-50"><h3 className="text-sm font-bold text-gray-700">Branch Load</h3></div>
+        <div className="p-4 space-y-3">{bStats.map(b=><div key={b.id} className="flex items-center gap-3">
+          <div className="w-7 h-7 rounded-lg bg-noor-50 flex items-center justify-center text-noor-600 flex-shrink-0"><Ic.Building/></div>
+          <div className="flex-1 min-w-0"><div className="flex justify-between"><p className="text-xs font-semibold text-gray-700 truncate">{b.name}</p><span className="text-xs font-bold text-gray-800">{b.open}</span></div><div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-noor-400 rounded-full" style={{width:`${Math.min(b.open*10,100)}%`}}/></div></div>
+        </div>)}</div>
+      </div>
+    </div>
+  </div>;
+};
+
+/* ══════════════════════════════════════════════
+   TICKET LIST
+══════════════════════════════════════════════ */
+const TicketList=({tickets,setPage,setSelT,currentUser})=>{
+  const [search,setSearch]=useState('');const [fSt,setFSt]=useState('');const [fPr,setFPr]=useState('');const [fBr,setFBr]=useState('');
+  const isUser=currentUser.role==='End-User';
+  const filtered=tickets.filter(t=>{
+    if(isUser&&t.createdBy!==currentUser.id)return false;
+    if(search&&!t.title.toLowerCase().includes(search.toLowerCase())&&!t.id.includes(search.toUpperCase()))return false;
+    if(fSt&&t.status!==fSt)return false;if(fPr&&t.priority!==fPr)return false;if(fBr&&t.branch!==fBr)return false;
+    return true;
+  });
+  return <div className="space-y-4 fade">
+    <div className="flex items-center justify-between"><div><h1 className="text-xl font-bold text-gray-900">{isUser?'My Tickets':'All Tickets'}</h1><p className="text-sm text-gray-500 mt-0.5">{filtered.length} tickets</p></div><Btn size="sm" icon={Ic.Plus} onClick={()=>setPage('create_ticket')}>New Ticket</Btn></div>
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-3">
+      <div className="relative flex-1 min-w-[180px]"><div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Ic.Search/></div><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search tickets..." className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:border-noor-400 focus:ring-2 focus:ring-noor-100 outline-none"/></div>
+      <select value={fSt} onChange={e=>setFSt(e.target.value)} className="px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:border-noor-400 outline-none"><option value="">All Status</option>{Object.entries(StatusCfg).map(([k,v])=><option key={k} value={k}>{v.l}</option>)}</select>
+      <select value={fPr} onChange={e=>setFPr(e.target.value)} className="px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:border-noor-400 outline-none"><option value="">All Priority</option>{Object.entries(PriorityCfg).map(([k,v])=><option key={k} value={k}>{v.l}</option>)}</select>
+      {!isUser&&<select value={fBr} onChange={e=>setFBr(e.target.value)} className="px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:border-noor-400 outline-none"><option value="">All Branches</option>{BRANCHES.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select>}
+    </div>
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <table className="w-full text-sm">
+        <thead><tr className="bg-gray-50/80 border-b border-gray-100">{['Ticket','Branch','Priority','Status','Assigned','Date',''].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">{h}</th>)}</tr></thead>
+        <tbody className="divide-y divide-gray-50">{filtered.map(t=><tr key={t.id} className="hover:bg-gray-50/60 transition-colors group">
+          <td className="px-4 py-3"><span className="font-mono text-xs font-bold text-noor-600">{t.id}</span><p className="text-sm text-gray-700 font-semibold mt-0.5 max-w-[220px] truncate">{t.title}</p><p className="text-xs text-gray-400 mt-0.5">{t.category}</p></td>
+          <td className="px-4 py-3 text-xs text-gray-600 font-medium">{t.branchName}</td>
+          <td className="px-4 py-3"><Bdg v={t.priority} type="p"/></td>
+          <td className="px-4 py-3"><Bdg v={t.status}/></td>
+          <td className="px-4 py-3">{t.assignedToName?<div className="flex items-center gap-1.5"><Av s={t.assignedToName.split(' ').map(n=>n[0]).join('')} size="xs" color="teal"/><span className="text-xs text-gray-600">{t.assignedToName}</span></div>:<span className="text-xs text-gray-400 italic">Unassigned</span>}</td>
+          <td className="px-4 py-3 text-xs text-gray-400">{new Date(t.createdAt).toLocaleDateString()}</td>
+          <td className="px-4 py-3"><button onClick={()=>{setSelT(t);setPage('ticket_detail');}} className="px-3 py-1.5 text-xs font-semibold bg-gray-100 hover:bg-noor-50 hover:text-noor-700 rounded-lg opacity-0 group-hover:opacity-100 transition-all">View</button></td>
+        </tr>)}</tbody>
+      </table>
+      {filtered.length===0&&<div className="text-center py-16 text-gray-400"><p className="text-sm mt-2">No tickets found</p></div>}
+    </div>
+  </div>;
+};
+
+/* ══════════════════════════════════════════════
+   CREATE TICKET
+══════════════════════════════════════════════ */
+const CreateTicket=({currentUser,setPage,toast})=>{
+  const [f,setF]=useState({branch:currentUser.branch||'',category:'',priority:'P3',title:'',description:'',assignedTo:''});
+  const [saving,setSaving]=useState(false);
+  const upd=k=>v=>setF(p=>({...p,[k]:v}));
+  const submit=async()=>{
+    if(!f.branch||!f.title.trim()||!f.description.trim()){toast('Please fill all required fields','error');return;}
+    setSaving(true);await new Promise(r=>setTimeout(r,900));setSaving(false);
+    toast('Ticket submitted successfully!','success');setPage(currentUser.role==='End-User'?'my_tickets':'tickets');
+  };
+  return <div className="max-w-2xl space-y-5 fade">
+    <div className="flex items-center justify-between"><div><h1 className="text-xl font-bold text-gray-900">Submit New Ticket</h1><p className="text-sm text-gray-500 mt-0.5">Describe your issue and we will get back to you</p></div><Btn variant="secondary" size="sm" onClick={()=>setPage(currentUser.role==='End-User'?'my_tickets':'tickets')}>← Back</Btn></div>
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
+      <div className="grid grid-cols-2 gap-4">
+        <Select label="Branch" value={f.branch} onChange={upd('branch')} required placeholder="Select branch" options={BRANCHES.map(b=>({v:b.id,l:b.name}))}/>
+        <Select label="Category" value={f.category} onChange={upd('category')} placeholder="Select category" options={CATS.map(c=>({v:c,l:c}))}/>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <Select label="Priority" value={f.priority} onChange={upd('priority')} options={[{v:'P1',l:'P1 — Critical'},{v:'P2',l:'P2 — High'},{v:'P3',l:'P3 — Medium'},{v:'P4',l:'P4 — Low'}]}/>
+        {currentUser.role!=='End-User'&&<Select label="Assign To" value={f.assignedTo} onChange={upd('assignedTo')} placeholder="Leave for auto-assign" options={DEMO_ACCOUNTS.filter(u=>['Agent','Supervisor'].includes(u.role)).map(u=>({v:u.id,l:`${u.name} (${u.role})`}))}/>}
+      </div>
+      <Input label="Title" value={f.title} onChange={upd('title')} placeholder="Short description of the issue" required icon={Ic.Tag}/>
+      <div className="space-y-1.5"><label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">Description <span className="text-red-400">*</span></label><textarea value={f.description} onChange={e=>upd('description')(e.target.value)} placeholder="Detailed description of the issue, when it started, how it affects your work..." rows={5} className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-noor-400 focus:ring-2 focus:ring-noor-100 outline-none resize-none"/></div>
+      <div className="flex justify-end gap-3 pt-2 border-t border-gray-100"><Btn variant="secondary" onClick={()=>setPage(currentUser.role==='End-User'?'my_tickets':'tickets')}>Cancel</Btn><Btn onClick={submit} loading={saving} icon={Ic.Plus}>Submit Ticket</Btn></div>
+    </div>
+  </div>;
+};
+
+/* ══════════════════════════════════════════════
+   TICKET DETAIL
+══════════════════════════════════════════════ */
+const TicketDetail=({ticket,currentUser,setPage,toast})=>{
+  const [comment,setComment]=useState('');const [internal,setInternal]=useState(false);
+  const [status,setStatus]=useState(ticket?.status||'NEW');const [assigned,setAssigned]=useState(ticket?.assignedTo||'');
+  if(!ticket)return null;
+  const isUser=currentUser.role==='End-User';
+  const addComment=()=>{if(!comment.trim())return;toast('Comment added','success');setComment('');};
+  const saveChanges=()=>toast('Ticket updated','success');
+  const tlineIcons={create:'🟢',assign:'🔵',status:'🟡'};
+  return <div className="space-y-4 fade">
+    <div className="flex items-center gap-3"><button onClick={()=>setPage(isUser?'my_tickets':'tickets')} className="p-2 rounded-xl hover:bg-gray-100 text-gray-500 transition-colors"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-4 h-4"><polyline points="15 18 9 12 15 6"/></svg></button><div><h1 className="text-xl font-bold text-gray-900 font-mono">{ticket.id}</h1><p className="text-sm text-gray-500 font-sans">{ticket.title}</p></div><div className="ml-auto flex gap-2"><Bdg v={ticket.priority} type="p"/><Bdg v={ticket.status}/></div></div>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div className="lg:col-span-2 space-y-4">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"><p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Description</p><p className="text-sm text-gray-700 leading-relaxed">{ticket.description}</p><div className="flex gap-4 mt-4 pt-4 border-t border-gray-100 text-xs text-gray-400"><span>Branch: <strong className="text-gray-600">{ticket.branchName}</strong></span><span>Category: <strong className="text-gray-600">{ticket.category}</strong></span><span>By: <strong className="text-gray-600">{ticket.createdByName}</strong></span></div></div>
+        {/* Timeline */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2"><Ic.Activity/><h3 className="text-sm font-bold text-gray-700">Ticket Timeline</h3></div>
+          <div className="p-5 space-y-4">{ticket.timeline.map((e,i)=><div key={i} className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-noor-50 border-2 border-noor-200 flex items-center justify-center text-sm flex-shrink-0">{tlineIcons[e.icon]||'⚪'}</div>
+            <div className="flex-1 pt-1"><p className="text-sm font-semibold text-gray-700">{e.event}</p><p className="text-xs text-gray-400 mt-0.5">by {e.by} · {new Date(e.at).toLocaleString()}</p></div>
+          </div>)}</div>
+        </div>
+        {/* Comments */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2"><Ic.Chat/><h3 className="text-sm font-bold text-gray-700">Comments ({ticket.comments.filter(c=>!c.internal||!isUser).length})</h3></div>
+          <div className="divide-y divide-gray-50">{ticket.comments.filter(c=>!c.internal||!isUser).map(c=><div key={c.id} className={`px-5 py-4 ${c.internal?'bg-amber-50/60':''}`}>
+            <div className="flex items-center gap-2 mb-2"><Av s={c.av} size="sm" color={c.internal?'gold':'teal'}/><span className="text-sm font-bold text-gray-700">{c.authorName}</span><span className="text-xs text-gray-400">{new Date(c.time).toLocaleString()}</span>{c.internal&&<span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">Internal Note</span>}</div>
+            <p className="text-sm text-gray-600 ml-10">{c.body}</p>
+          </div>)}{ticket.comments.length===0&&<p className="text-center text-sm text-gray-400 py-8">No comments yet</p>}</div>
+          <div className="px-5 py-4 border-t border-gray-100 space-y-3">
+            <textarea value={comment} onChange={e=>setComment(e.target.value)} placeholder={isUser?"Write a comment on your ticket...":"Add a comment or internal note..."} rows={3} className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-noor-400 focus:ring-2 focus:ring-noor-100 outline-none resize-none"/>
+            <div className="flex items-center justify-between">{!isUser?<Toggle value={internal} onChange={setInternal} label="Internal note (not visible to end-user)"/>:<div/>}<Btn icon={Ic.Send} onClick={addComment} size="sm">Post Comment</Btn></div>
+          </div>
+        </div>
+      </div>
+      {/* Sidebar info */}
+      <div className="space-y-4">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h3 className="text-sm font-bold text-gray-700 mb-4">Ticket Actions</h3>
+          {!isUser&&<div className="space-y-3"><div><p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Change Status</p><select value={status} onChange={e=>setStatus(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:border-noor-400 outline-none">{Object.entries(StatusCfg).map(([k,v])=><option key={k} value={k}>{v.l}</option>)}</select></div>
+          <div><p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Assigned To</p><select value={assigned} onChange={e=>setAssigned(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:border-noor-400 outline-none"><option value="">Unassigned</option>{DEMO_ACCOUNTS.filter(u=>['Agent','Supervisor'].includes(u.role)).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+          <Btn variant="outline" size="sm" icon={Ic.Check} onClick={saveChanges} fullWidth>Save Changes</Btn></div>}
+          <div className="mt-4 pt-4 border-t border-gray-100 space-y-2.5">{[['ID',ticket.id],['Branch',ticket.branchName],['Created',new Date(ticket.createdAt).toLocaleDateString()],['SLA Deadline',new Date(ticket.slaBreachAt).toLocaleString()]].map(([k,v])=><div key={k} className="flex justify-between items-center"><span className="text-xs text-gray-400">{k}</span><span className="text-xs font-semibold text-gray-700">{v}</span></div>)}</div>
+        </div>
+      </div>
+    </div>
+  </div>;
+};
+
+/* ══════════════════════════════════════════════
+   ASSETS
+══════════════════════════════════════════════ */
+const Assets=({currentUser,toast})=>{
+  const [assets,setAssets]=useState(()=>mkAssets());
+  const [search,setSearch]=useState('');const [fBr,setFBr]=useState('');const [fTy,setFTy]=useState('');const [fSt,setFSt]=useState('');
+  const [showModal,setShowModal]=useState(false);const [editing,setEditing]=useState(null);
+  const empty={tag:'',name:'',type:'',branch:currentUser.branch||'',empId:'',empName:'',serial:'',status:'AVAILABLE',purchaseDate:'',warrantyExpiry:'',notes:''};
+  const [f,setF]=useState(empty);
+  const upd=k=>v=>setF(p=>({...p,[k]:v}));
+  const isUser=currentUser.role==='End-User';
+  const filtered=assets.filter(a=>{
+    if(isUser&&a.empId!==currentUser.empId)return false;
+    if(search&&!a.name.toLowerCase().includes(search.toLowerCase())&&!a.tag.toLowerCase().includes(search.toLowerCase())&&!(a.empName||'').toLowerCase().includes(search.toLowerCase())&&!(a.empId||'').toLowerCase().includes(search.toLowerCase()))return false;
+    if(fBr&&a.branch!==fBr)return false;if(fTy&&a.type!==fTy)return false;if(fSt&&a.status!==fSt)return false;
+    return true;
+  });
+  const openAdd=()=>{setEditing(null);setF(empty);setShowModal(true);};
+  const openEdit=a=>{setEditing(a);setF({tag:a.tag,name:a.name,type:a.type,branch:a.branch,empId:a.empId||'',empName:a.empName||'',serial:a.serial||'',status:a.status,purchaseDate:a.purchaseDate||'',warrantyExpiry:a.warrantyExpiry||'',notes:a.notes||''});setShowModal(true);};
+  const save=()=>{
+    if(!f.tag||!f.name||!f.type||!f.branch){toast('Fill required fields','error');return;}
+    const entry={...f,branchName:BRANCHES.find(b=>b.id===f.branch)?.name||f.branch};
+    if(editing)setAssets(p=>p.map(a=>a.id===editing.id?{...a,...entry}:a));
+    else setAssets(p=>[{...entry,id:`A-${Date.now()}`},...p]);
+    toast(editing?'Asset updated':'Asset added','success');setShowModal(false);
+  };
+  const del=id=>{setAssets(p=>p.filter(a=>a.id!==id));toast('Asset removed','success');};
+  return <div className="space-y-4 fade">
+    <div className="flex items-center justify-between"><div><h1 className="text-xl font-bold text-gray-900">{isUser?'My Assets':'Asset Management'}</h1><p className="text-sm text-gray-500 mt-0.5">{filtered.length} assets</p></div>
+      {!isUser&&<div className="flex gap-2"><Btn variant="secondary" size="sm" icon={Ic.Download} onClick={()=>toast('Exporting CSV…','info')}>Export</Btn><Btn size="sm" icon={Ic.Plus} onClick={openAdd}>Add Asset</Btn></div>}
+    </div>
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-3">
+      <div className="relative flex-1 min-w-[180px]"><div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Ic.Search/></div><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by name, tag, employee…" className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:border-noor-400 focus:ring-2 focus:ring-noor-100 outline-none"/></div>
+      {!isUser&&<><select value={fBr} onChange={e=>setFBr(e.target.value)} className="px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:border-noor-400 outline-none"><option value="">All Branches</option>{BRANCHES.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select>
+      <select value={fTy} onChange={e=>setFTy(e.target.value)} className="px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:border-noor-400 outline-none"><option value="">All Types</option>{ASSET_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select>
+      <select value={fSt} onChange={e=>setFSt(e.target.value)} className="px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:border-noor-400 outline-none"><option value="">All Status</option>{Object.keys(AssetStatusCfg).map(s=><option key={s} value={s}>{s.replace('_',' ')}</option>)}</select></>}
+    </div>
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <table className="w-full text-sm">
+        <thead><tr className="bg-gray-50/80 border-b border-gray-100">
+          {['Asset Tag / Name','Employee ID','Employee Name','Type','Branch','Status',...(!isUser?['Actions']:[])].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">{h}</th>)}
+        </tr></thead>
+        <tbody className="divide-y divide-gray-50">{filtered.slice(0,40).map(a=><tr key={a.id} className="hover:bg-gray-50/60 transition-colors group">
+          <td className="px-4 py-3"><p className="font-mono text-xs font-bold text-noor-600">{a.tag}</p><p className="text-sm text-gray-700 font-semibold mt-0.5">{a.name}</p>{a.serial&&<p className="text-xs text-gray-400">S/N: {a.serial}</p>}</td>
+          <td className="px-4 py-3">{a.empId?<span className="font-mono text-xs bg-noor-50 text-noor-700 px-2 py-1 rounded-lg font-bold">{a.empId}</span>:<span className="text-xs text-gray-400 italic">—</span>}</td>
+          <td className="px-4 py-3">{a.empName?<div className="flex items-center gap-1.5"><Av s={a.empName.split(' ').map(n=>n[0]).join('')} size="xs" color="gold"/><span className="text-xs text-gray-700 font-medium">{a.empName}</span></div>:<span className="text-xs text-gray-400 italic">Unassigned</span>}</td>
+          <td className="px-4 py-3"><span className="text-xs text-gray-600 bg-gray-100 px-2 py-0.5 rounded-lg font-medium">{a.type}</span></td>
+          <td className="px-4 py-3 text-xs text-gray-600 font-medium">{a.branchName}</td>
+          <td className="px-4 py-3"><Bdg v={a.status} type="a"/></td>
+          {!isUser&&<td className="px-4 py-3"><div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={()=>openEdit(a)} className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors"><Ic.Edit/></button><button onClick={()=>del(a.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"><Ic.Trash/></button></div></td>}
+        </tr>)}</tbody>
+      </table>
+      {filtered.length===0&&<div className="text-center py-16 text-gray-400"><p className="text-sm">No assets found</p></div>}
+    </div>
+    <Modal open={showModal} onClose={()=>setShowModal(false)} title={editing?'Edit Asset':'Add New Asset'} size="lg">
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4"><Input label="Asset Tag" value={f.tag} onChange={upd('tag')} required placeholder="BR1-LAP-001" icon={Ic.Tag}/><Input label="Asset Name" value={f.name} onChange={upd('name')} required placeholder="Dell Latitude 5540"/></div>
+        <div className="grid grid-cols-2 gap-4"><Select label="Asset Type" value={f.type} onChange={upd('type')} required placeholder="Select type" options={ASSET_TYPES.map(t=>({v:t,l:t}))}/><Select label="Branch" value={f.branch} onChange={upd('branch')} required placeholder="Select branch" options={BRANCHES.map(b=>({v:b.id,l:b.name}))}/></div>
+        {/* Employee fields highlighted */}
+        <div className="bg-noor-50 border border-noor-200 rounded-xl p-4 space-y-3">
+          <p className="text-xs font-bold text-noor-700 uppercase tracking-wide flex items-center gap-1.5"><Ic.Person/> Employee Assignment</p>
+          <div className="grid grid-cols-2 gap-4"><Input label="Employee ID" value={f.empId} onChange={upd('empId')} placeholder="EMP-101" icon={Ic.Key}/><Input label="Employee Name" value={f.empName} onChange={upd('empName')} placeholder="Full name" icon={Ic.Person}/></div>
+        </div>
+        <div className="grid grid-cols-2 gap-4"><Input label="Serial Number" value={f.serial} onChange={upd('serial')} placeholder="Manufacturer serial"/><Select label="Status" value={f.status} onChange={upd('status')} options={Object.keys(AssetStatusCfg).map(s=>({v:s,l:s.replace('_',' ')}))}/></div>
+        <div className="grid grid-cols-2 gap-4"><Input label="Purchase Date" type="date" value={f.purchaseDate} onChange={upd('purchaseDate')}/><Input label="Warranty Expiry" type="date" value={f.warrantyExpiry} onChange={upd('warrantyExpiry')}/></div>
+        <div className="flex justify-end gap-3 pt-2 border-t border-gray-100"><Btn variant="secondary" onClick={()=>setShowModal(false)}>Cancel</Btn><Btn icon={Ic.Save} onClick={save}>{editing?'Update Asset':'Add Asset'}</Btn></div>
+      </div>
+    </Modal>
+  </div>;
+};
+
+/* ══════════════════════════════════════════════
+   MESSAGES
+══════════════════════════════════════════════ */
+const Messages=({currentUser,toast})=>{
+  const [messages,setMessages]=useState(()=>mkMessages());
+  const [activeConv,setActiveConv]=useState(null);const [newMsg,setNewMsg]=useState('');const [newConvUser,setNewConvUser]=useState('');const [showNew,setShowNew]=useState(false);
+  const isAdmin=currentUser.role==='Admin'||currentUser.role==='Supervisor';
+  const adminId='A1';
+
+  // Group conversations: admin sees all users, user sees only their conv with admin
+  const conversations=useMemo(()=>{
+    if(!isAdmin){
+      const conv=messages.filter(m=>(m.fromId===currentUser.id&&m.toId===adminId)||(m.fromId===adminId&&m.toId===currentUser.id)).sort((a,b)=>new Date(a.at)-new Date(b.at));
+      return [{userId:currentUser.id,userName:currentUser.name,av:currentUser.av,messages:conv,unread:conv.filter(m=>m.toId===currentUser.id&&!m.read).length}];
+    }
+    // Admin: group by non-admin user
+    const userMap={};
+    messages.forEach(m=>{
+      const otherId=m.fromId===adminId?m.toId:m.fromId;
+      const other=DEMO_ACCOUNTS.find(u=>u.id===otherId);
+      if(!other||other.role==='Admin')return;
+      if(!userMap[otherId])userMap[otherId]={userId:otherId,userName:other.name,av:other.av,messages:[],unread:0};
+      userMap[otherId].messages.push(m);
+      if(m.toId===adminId&&!m.read)userMap[otherId].unread++;
+    });
+    return Object.values(userMap).sort((a,b)=>new Date(b.messages[b.messages.length-1]?.at||0)-new Date(a.messages[a.messages.length-1]?.at||0));
+  },[messages,currentUser,isAdmin]);
+
+  const activeConvData=activeConv?conversations.find(c=>c.userId===activeConv):conversations[0]||null;
+  useEffect(()=>{if(!activeConv&&conversations.length>0)setActiveConv(conversations[0].userId);},[conversations.length]);
+
+  const send=()=>{
+    if(!newMsg.trim())return;
+    const otherId=isAdmin?activeConv:adminId;
+    const other=DEMO_ACCOUNTS.find(u=>u.id===otherId)||{name:'Admin',av:'SA'};
+    setMessages(p=>[...p,{id:`m${Date.now()}`,fromId:currentUser.id,fromName:currentUser.name,fromAv:currentUser.av,toId:otherId,body:newMsg.trim(),at:new Date().toISOString(),read:false}]);
+    setNewMsg('');
+    toast('Message sent','success');
+  };
+
+  const msgRef=useRef(null);
+  useEffect(()=>{if(msgRef.current)msgRef.current.scrollTop=msgRef.current.scrollHeight;},[activeConvData?.messages.length]);
+
+  const totalUnread=conversations.reduce((s,c)=>s+c.unread,0);
+
+  return <div className="fade h-[calc(100vh-120px)] flex flex-col">
+    <div className="flex items-center justify-between mb-4"><div><h1 className="text-xl font-bold text-gray-900">Messages</h1><p className="text-sm text-gray-500 mt-0.5">{isAdmin?`${conversations.length} conversations`:`Direct message with support admin`}{totalUnread>0&&<span className="ml-2 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{totalUnread} new</span>}</p></div>
+      {isAdmin&&<Btn size="sm" icon={Ic.Plus} onClick={()=>setShowNew(true)}>New Message</Btn>}
+    </div>
+    <div className="flex-1 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex min-h-0">
+      {/* Conversation list (admin only or single for user) */}
+      {isAdmin&&<div className="w-72 border-r border-gray-100 flex flex-col flex-shrink-0">
+        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/60"><p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Conversations</p></div>
+        <div className="flex-1 overflow-y-auto divide-y divide-gray-50">{conversations.map(c=><button key={c.userId} onClick={()=>setActiveConv(c.userId)} className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left ${activeConv===c.userId?'bg-noor-50':''}`}>
+          <Av s={c.av} size="sm" color="gold"/>
+          <div className="flex-1 min-w-0"><p className="text-sm font-bold text-gray-700 truncate">{c.userName}</p><p className="text-xs text-gray-400 truncate">{c.messages[c.messages.length-1]?.body||'No messages'}</p></div>
+          {c.unread>0&&<span className="w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{c.unread}</span>}
+        </button>)}
+        {conversations.length===0&&<p className="text-center text-xs text-gray-400 py-8">No conversations yet</p>}
+        </div>
+      </div>}
+      {/* Chat area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {activeConvData?<>
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 bg-gray-50/40 flex-shrink-0">
+            <Av s={isAdmin?activeConvData.av:'SA'} size="sm" color={isAdmin?'gold':'violet'}/>
+            <div><p className="text-sm font-bold text-gray-800">{isAdmin?activeConvData.userName:'System Admin'}</p><p className="text-xs text-gray-400">{isAdmin?DEMO_ACCOUNTS.find(u=>u.id===activeConvData.userId)?.role||'':'Support Administrator'}</p></div>
+          </div>
+          <div ref={msgRef} className="flex-1 overflow-y-auto p-5 space-y-3">
+            {(isAdmin?activeConvData.messages:conversations[0]?.messages||[]).map(m=>{
+              const mine=m.fromId===currentUser.id;
+              return <div key={m.id} className={`flex gap-2 ${mine?'flex-row-reverse':''}`}>
+                <Av s={mine?currentUser.av:isAdmin?activeConvData.av:'SA'} size="xs" color={mine?'gold':'violet'}/>
+                <div className={`max-w-xs lg:max-w-md ${mine?'items-end':'items-start'} flex flex-col gap-1`}>
+                  <div className={`px-4 py-2.5 text-sm leading-relaxed ${mine?'msg-bubble-user text-green-900':'msg-bubble-admin text-amber-900'}`}>{m.body}</div>
+                  <p className="text-xs text-gray-400 px-1">{new Date(m.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} · {new Date(m.at).toLocaleDateString()}</p>
+                </div>
+              </div>;
+            })}
+            {(isAdmin?activeConvData.messages:conversations[0]?.messages||[]).length===0&&<div className="flex-1 flex items-center justify-center"><p className="text-sm text-gray-400">No messages yet. Send the first message!</p></div>}
+          </div>
+          <div className="px-4 py-3 border-t border-gray-100 flex gap-3 flex-shrink-0">
+            <input value={newMsg} onChange={e=>setNewMsg(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Type a message… (Enter to send)" className="flex-1 px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-noor-400 focus:ring-2 focus:ring-noor-100 outline-none"/>
+            <Btn icon={Ic.Send} onClick={send} disabled={!newMsg.trim()}>Send</Btn>
+          </div>
+        </>:<div className="flex-1 flex items-center justify-center"><div className="text-center text-gray-400"><Ic.Chat/><p className="text-sm mt-3">Select a conversation to start messaging</p></div></div>}
+      </div>
+    </div>
+    <Modal open={showNew} onClose={()=>setShowNew(false)} title="New Message" size="sm">
+      <div className="space-y-4">
+        <Select label="Send To" value={newConvUser} onChange={setNewConvUser} required placeholder="Select user" options={DEMO_ACCOUNTS.filter(u=>u.id!==currentUser.id&&u.role!=='Admin').map(u=>({v:u.id,l:`${u.name} (${u.role})`}))}/>
+        <div className="space-y-1.5"><label className="block text-xs font-bold text-gray-500 uppercase tracking-wide">Message</label><textarea value={newMsg} onChange={e=>setNewMsg(e.target.value)} placeholder="Type your message…" rows={4} className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-noor-400 outline-none resize-none"/></div>
+        <div className="flex justify-end gap-3 pt-2 border-t border-gray-100"><Btn variant="secondary" onClick={()=>setShowNew(false)}>Cancel</Btn><Btn icon={Ic.Send} onClick={()=>{if(!newConvUser||!newMsg.trim()){toast('Select recipient and type message','error');return;}setMessages(p=>[...p,{id:`m${Date.now()}`,fromId:currentUser.id,fromName:currentUser.name,fromAv:currentUser.av,toId:newConvUser,body:newMsg.trim(),at:new Date().toISOString(),read:false}]);setActiveConv(newConvUser);setNewMsg('');setShowNew(false);toast('Message sent','success');}}>Send</Btn></div>
+      </div>
+    </Modal>
+  </div>;
+};
+
+/* ══════════════════════════════════════════════
+   USERS (Admin Full CRUD)
+══════════════════════════════════════════════ */
+const UsersPage=({toast})=>{
+  const [users,setUsers]=useState(()=>DEMO_ACCOUNTS.map(u=>({...u})));
+  const [showModal,setShowModal]=useState(false);const [editing,setEditing]=useState(null);
+  const empty={name:'',email:'',password:'',role:'End-User',branch:'',empId:''};
+  const [f,setF]=useState(empty);const [showPw,setShowPw]=useState(false);
+  const upd=k=>v=>setF(p=>({...p,[k]:v}));
+  const roleColor={Admin:'bg-ink-100 text-ink-700',Supervisor:'bg-blue-100 text-blue-700',Agent:'bg-teal-100 text-teal-700','End-User':'bg-gray-100 text-gray-600'};
+  const openAdd=()=>{setEditing(null);setF(empty);setShowPw(false);setShowModal(true);};
+  const openEdit=u=>{setEditing(u);setF({name:u.name,email:u.email,password:'',role:u.role,branch:u.branch||'',empId:u.empId||''});setShowPw(false);setShowModal(true);};
+  const save=()=>{
+    if(!f.name||!f.email||!f.role){toast('Fill required fields','error');return;}
+    if(!editing&&!f.password){toast('Password required for new user','error');return;}
+    const entry={...f,av:f.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase(),branch:f.branch||null};
+    if(editing)setUsers(p=>p.map(u=>u.id===editing.id?{...u,...entry}:u));
+    else setUsers(p=>[...p,{...entry,id:`U${Date.now()}`}]);
+    toast(editing?'User updated':'User added','success');setShowModal(false);
+  };
+  const del=id=>{if(id==='A1'){toast('Cannot delete system admin','error');return;}setUsers(p=>p.filter(u=>u.id!==id));toast('User removed','success');};
+  return <div className="space-y-4 fade">
+    <div className="flex items-center justify-between"><div><h1 className="text-xl font-bold text-gray-900">User Management</h1><p className="text-sm text-gray-500 mt-0.5">{users.length} users registered</p></div><Btn size="sm" icon={Ic.Plus} onClick={openAdd}>Add User</Btn></div>
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <table className="w-full text-sm">
+        <thead><tr className="bg-gray-50/80 border-b border-gray-100">{['User','Employee ID','Role','Branch','Actions'].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">{h}</th>)}</tr></thead>
+        <tbody className="divide-y divide-gray-50">{users.map(u=><tr key={u.id} className="hover:bg-gray-50/60 transition-colors group">
+          <td className="px-4 py-3"><div className="flex items-center gap-3"><Av s={u.av} size="md" color={u.role==='Admin'?'violet':'gold'}/><div><p className="text-sm font-bold text-gray-800">{u.name}</p><p className="text-xs text-gray-400">{u.email}</p></div></div></td>
+          <td className="px-4 py-3"><span className="font-mono text-xs bg-noor-50 text-noor-700 px-2 py-0.5 rounded-lg font-bold">{u.empId||'—'}</span></td>
+          <td className="px-4 py-3"><span className={`text-xs font-bold px-2 py-0.5 rounded-full ${roleColor[u.role]||roleColor['End-User']}`}>{u.role}</span></td>
+          <td className="px-4 py-3 text-xs text-gray-600">{u.branch?BRANCHES.find(b=>b.id===u.branch)?.name:<span className="italic text-gray-400">All branches</span>}</td>
+          <td className="px-4 py-3"><div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={()=>openEdit(u)} className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600"><Ic.Edit/></button><button onClick={()=>del(u.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500"><Ic.Trash/></button></div></td>
+        </tr>)}</tbody>
+      </table>
+    </div>
+    <Modal open={showModal} onClose={()=>setShowModal(false)} title={editing?`Edit ${editing.name}`:'Add New User'} size="md">
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4"><Input label="Full Name" value={f.name} onChange={upd('name')} required icon={Ic.Person}/><Input label="Employee ID" value={f.empId} onChange={upd('empId')} placeholder="EMP-000" icon={Ic.Key}/></div>
+        <Input label="Email Address" type="email" value={f.email} onChange={upd('email')} required icon={Ic.Mail}/>
+        <div className="space-y-1.5"><label className="block text-xs font-bold text-gray-500 uppercase tracking-wide">Password {!editing&&<span className="text-red-400">*</span>}{editing&&<span className="text-gray-400 font-normal ml-1">(leave blank to keep current)</span>}</label>
+          <div className="relative"><div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Ic.Lock/></div>
+            <input type={showPw?'text':'password'} value={f.password} onChange={e=>upd('password')(e.target.value)} placeholder={editing?'New password (optional)':'Minimum 6 characters'} className="w-full pl-9 pr-10 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-noor-400 outline-none"/>
+            <button type="button" onClick={()=>setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">{showPw?<Ic.EyeOff/>:<Ic.Eye/>}</button>
+          </div></div>
+        <div className="grid grid-cols-2 gap-4">
+          <Select label="Role" value={f.role} onChange={upd('role')} required options={['Admin','Supervisor','Agent','End-User'].map(r=>({v:r,l:r}))}/>
+          <Select label="Branch" value={f.branch} onChange={upd('branch')} placeholder="All branches" options={BRANCHES.map(b=>({v:b.id,l:b.name}))}/>
+        </div>
+        <div className="flex justify-end gap-3 pt-2 border-t border-gray-100"><Btn variant="secondary" onClick={()=>setShowModal(false)}>Cancel</Btn><Btn icon={Ic.Save} onClick={save}>{editing?'Save Changes':'Add User'}</Btn></div>
+      </div>
+    </Modal>
+  </div>;
+};
+
+/* ══════════════════════════════════════════════
+   BRANCHES (Admin Full CRUD)
+══════════════════════════════════════════════ */
+const BranchesPage=({toast})=>{
+  const [branches,setBranches]=useState(()=>BRANCHES.map(b=>({...b})));
+  const [showModal,setShowModal]=useState(false);const [editing,setEditing]=useState(null);
+  const empty={code:'',name:'',city:'',phone:'',email:'',manager:'',active:true};
+  const [f,setF]=useState(empty);const upd=k=>v=>setF(p=>({...p,[k]:v}));
+  const openAdd=()=>{setEditing(null);setF(empty);setShowModal(true);};
+  const openEdit=b=>{setEditing(b);setF({code:b.code,name:b.name,city:b.city,phone:b.phone||'',email:b.email||'',manager:b.manager,active:b.active});setShowModal(true);};
+  const save=()=>{
+    if(!f.code||!f.name||!f.city){toast('Fill required fields','error');return;}
+    if(editing)setBranches(p=>p.map(b=>b.id===editing.id?{...b,...f}:b));
+    else setBranches(p=>[...p,{...f,id:`BR${Date.now()}`}]);
+    toast(editing?'Branch updated':'Branch added','success');setShowModal(false);
+  };
+  const del=id=>{setBranches(p=>p.filter(b=>b.id!==id));toast('Branch removed','success');};
+  const toggle=id=>{setBranches(p=>p.map(b=>b.id===id?{...b,active:!b.active}:b));toast('Branch status updated','success');};
+  return <div className="space-y-4 fade">
+    <div className="flex items-center justify-between"><div><h1 className="text-xl font-bold text-gray-900">Branch Management</h1><p className="text-sm text-gray-500 mt-0.5">{branches.length} branches · {branches.filter(b=>b.active).length} active</p></div><Btn size="sm" icon={Ic.Plus} onClick={openAdd}>Add Branch</Btn></div>
+    <div className="grid grid-cols-1 gap-3">{branches.map(b=><div key={b.id} className={`bg-white rounded-2xl border shadow-sm p-5 flex items-center gap-4 transition-all ${b.active?'border-gray-100':'border-dashed border-gray-200 opacity-60'}`}>
+      <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${b.active?'bg-noor-50 text-noor-600':'bg-gray-100 text-gray-400'}`}><Ic.Building/></div>
+      <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div><p className="text-sm font-bold text-gray-800">{b.name}</p><p className="text-xs text-gray-400">{b.city}</p></div>
+        <div><p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Manager</p><p className="text-xs text-gray-700 font-semibold mt-0.5">{b.manager}</p></div>
+        <div><p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Contact</p><p className="text-xs text-gray-700 mt-0.5">{b.phone||'—'}</p></div>
+        <div><p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Code</p><span className="font-mono text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-lg font-bold">{b.code}</span></div>
+      </div>
+      <div className="flex items-center gap-3 flex-shrink-0">
+        <Toggle value={b.active} onChange={()=>toggle(b.id)}/>
+        <button onClick={()=>openEdit(b)} className="p-2 rounded-xl hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors"><Ic.Edit/></button>
+        <button onClick={()=>del(b.id)} className="p-2 rounded-xl hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"><Ic.Trash/></button>
+      </div>
+    </div>)}</div>
+    <Modal open={showModal} onClose={()=>setShowModal(false)} title={editing?'Edit Branch':'Add New Branch'} size="md">
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4"><Input label="Branch Code" value={f.code} onChange={upd('code')} required placeholder="BR9" icon={Ic.Tag}/><Input label="City" value={f.city} onChange={upd('city')} required placeholder="Dubai"/></div>
+        <Input label="Branch Name" value={f.name} onChange={upd('name')} required placeholder="e.g. Downtown Health Centre" icon={Ic.Building}/>
+        <div className="grid grid-cols-2 gap-4"><Input label="Phone" value={f.phone} onChange={upd('phone')} placeholder="+971 4 xxx xxxx" icon={Ic.Layers}/><Input label="Email" type="email" value={f.email} onChange={upd('email')} placeholder="branch@noor.ae" icon={Ic.Mail}/></div>
+        <Input label="Branch Manager" value={f.manager} onChange={upd('manager')} placeholder="Manager full name" icon={Ic.Person}/>
+        <Toggle value={f.active} onChange={upd('active')} label="Branch is active" desc="Active branches accept new tickets"/>
+        <div className="flex justify-end gap-3 pt-2 border-t border-gray-100"><Btn variant="secondary" onClick={()=>setShowModal(false)}>Cancel</Btn><Btn icon={Ic.Save} onClick={save}>{editing?'Save Changes':'Add Branch'}</Btn></div>
+      </div>
+    </Modal>
+  </div>;
+};
+
+/* ══════════════════════════════════════════════
+   REPORTS
+══════════════════════════════════════════════ */
+const Reports=({tickets})=>{
+  const bStats=BRANCHES.map(b=>({...b,total:tickets.filter(t=>t.branch===b.id).length,open:tickets.filter(t=>t.branch===b.id&&!['CLOSED','RESOLVED'].includes(t.status)).length,resolved:tickets.filter(t=>t.branch===b.id&&t.status==='RESOLVED').length}));
+  return <div className="space-y-6 fade">
+    <div className="flex items-center justify-between"><div><h1 className="text-xl font-bold text-gray-900">Reports</h1><p className="text-sm text-gray-500 mt-0.5">Performance analytics across all branches</p></div><Btn variant="secondary" size="sm" icon={Ic.Download}>Export CSV</Btn></div>
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{[['Total Tickets',tickets.length,'bg-blue-50 text-blue-600',Ic.Ticket],['Avg Resolution','6.4h','bg-noor-50 text-noor-600',Ic.Clock],['SLA Compliance','87%','bg-green-50 text-green-600',Ic.CheckCircle],['Open Rate',`${Math.round((tickets.filter(t=>!['CLOSED','RESOLVED'].includes(t.status)).length/tickets.length)*100)}%`,'bg-red-50 text-red-500',Ic.Activity]].map(([l,v,c,Ic2])=><div key={l} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"><div className="flex items-start justify-between"><div><p className="text-xs font-bold text-gray-500 uppercase tracking-wide">{l}</p><p className="text-3xl font-bold text-gray-900 mt-1.5">{v}</p></div><div className={`w-10 h-10 rounded-xl ${c} flex items-center justify-center`}><Ic2/></div></div></div>)}</div>
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100"><h3 className="text-sm font-bold text-gray-700">Branch Performance Summary</h3></div>
+      <table className="w-full text-sm"><thead><tr className="bg-gray-50/80 border-b border-gray-100">{['Branch','Total','Open','Resolved','SLA %','Resolution Rate'].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide">{h}</th>)}</tr></thead>
+        <tbody className="divide-y divide-gray-50">{bStats.map(b=>{const rate=b.total>0?Math.round(b.resolved/b.total*100):0;const sla=78+(b.id.charCodeAt(2)%18);return <tr key={b.id} className="hover:bg-gray-50/60"><td className="px-4 py-3 font-semibold text-gray-700">{b.name}</td><td className="px-4 py-3 font-bold text-gray-700">{b.total}</td><td className="px-4 py-3"><span className={`font-bold ${b.open>2?'text-amber-600':'text-gray-600'}`}>{b.open}</span></td><td className="px-4 py-3 text-green-600 font-bold">{b.resolved}</td><td className="px-4 py-3"><div className="flex items-center gap-2"><div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full rounded-full ${sla>=85?'bg-green-500':'bg-noor-400'}`} style={{width:`${sla}%`}}/></div><span className="text-xs text-gray-600">{sla}%</span></div></td><td className="px-4 py-3"><div className="flex items-center gap-2"><div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-noor-400 rounded-full" style={{width:`${rate}%`}}/></div><span className="text-xs text-gray-600">{rate}%</span></div></td></tr>;})}
+        </tbody>
+      </table>
+    </div>
+  </div>;
+};
+
+/* ══════════════════════════════════════════════
+   MASTER CONFIG with ACCESS CONTROL
+══════════════════════════════════════════════ */
+const MasterConfig=({toast})=>{
+  const [tab,setTab]=useState('access');
+  const ALL_SCREENS={dashboard:'Dashboard',tickets:'All Tickets',assets:'Assets',users:'Users',branches:'Branches',reports:'Reports',messages:'Messages',settings:'Settings',master:'Master Config',my_tickets:'My Tickets',my_assets:'My Assets'};
+  const [perms,setPerms]=useState(()=>({
+    'End-User':  {my_tickets:true,my_assets:true,messages:true,dashboard:false,tickets:false,assets:false,users:false,branches:false,reports:false,settings:false,master:false},
+    'Agent':     {my_tickets:false,my_assets:false,tickets:true,assets:true,messages:true,reports:true,dashboard:false,users:false,branches:false,settings:false,master:false},
+    'Supervisor':{dashboard:true,tickets:true,assets:true,users:true,branches:false,reports:true,messages:true,settings:false,master:false,my_tickets:false,my_assets:false},
+    'Admin':     Object.fromEntries(Object.keys(ALL_SCREENS).map(k=>[k,true])),
+  }));
+  const [sla,setSla]=useState([{p:'P1',l:'Critical',first:'30 min',res:'4 hours',esc:'Admin'},{p:'P2',l:'High',first:'2 hours',res:'8 hours',esc:'Supervisor'},{p:'P3',l:'Medium',first:'8 hours',res:'48 hours',esc:'Agent'},{p:'P4',l:'Low',first:'24 hours',res:'5 days',esc:'Agent'}]);
+  const [cats,setCats]=useState(CATS.map(c=>({name:c,active:true})));const [newCat,setNewCat]=useState('');
+  const togglePerm=(role,screen)=>{if(role==='Admin')return;setPerms(p=>({...p,[role]:{...p[role],[screen]:!p[role][screen]}}));};
+  const roles=['End-User','Agent','Supervisor','Admin'];
+  const tabs=[{id:'access',l:'Access Control',I:Ic.Shield},{id:'sla',l:'SLA Rules',I:Ic.Clock},{id:'categories',l:'Categories',I:Ic.Layers},{id:'settings',l:'System Settings',I:Ic.Gear}];
+  return <div className="space-y-4 fade">
+    <div><h1 className="text-xl font-bold text-gray-900">Master Configuration</h1><p className="text-sm text-gray-500 mt-0.5">Access control, SLA rules, and system configuration</p></div>
+    <div className="flex gap-1 bg-white border border-gray-100 rounded-2xl shadow-sm p-1.5 w-fit">{tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${tab===t.id?'bg-noor-500 text-white shadow-sm':'text-gray-600 hover:bg-gray-100'}`}><t.I/>{t.l}</button>)}</div>
+    {tab==='access'&&<div className="fade space-y-3">
+      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-amber-800"><Ic.Info/><span>Admin always has full access. Toggle screen access per role below.</span></div>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="bg-gray-50 border-b border-gray-100"><th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide min-w-[160px]">Screen / Feature</th>{roles.map(r=><th key={r} className="px-4 py-3 text-center text-xs font-bold uppercase tracking-wide min-w-[110px]"><span className={`px-2 py-0.5 rounded-full text-xs font-bold ${r==='Admin'?'bg-ink-100 text-ink-700':r==='Supervisor'?'bg-blue-100 text-blue-700':r==='Agent'?'bg-teal-100 text-teal-700':'bg-gray-100 text-gray-600'}`}>{r}</span></th>)}</tr></thead>
+            <tbody className="divide-y divide-gray-50">{Object.entries(ALL_SCREENS).map(([id,label])=><tr key={id} className="hover:bg-gray-50/60 transition-colors">
+              <td className="px-4 py-3"><p className="text-sm font-semibold text-gray-700">{label}</p><p className="text-xs text-gray-400 font-mono">{id}</p></td>
+              {roles.map(role=><td key={role} className="px-4 py-3 text-center">
+                {role==='Admin'?<div className="flex justify-center"><span className="w-5 h-5 bg-green-100 text-green-600 rounded-full flex items-center justify-center"><Ic.Check/></span></div>
+                :<button onClick={()=>togglePerm(role,id)} className={`w-9 h-5 rounded-full transition-colors mx-auto flex-shrink-0 flex items-center relative ${perms[role]?.[id]?'bg-noor-500':'bg-gray-200'}`}><span className={`absolute w-4 h-4 bg-white rounded-full shadow transition-all ${perms[role]?.[id]?'left-4':'left-0.5'}`}/></button>}
+              </td>)}
+            </tr>)}</tbody>
+          </table>
+        </div>
+      </div>
+      <div className="flex justify-end"><Btn icon={Ic.Save} onClick={()=>toast('Access control saved','success')}>Save Access Rules</Btn></div>
+    </div>}
+    {tab==='sla'&&<div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden fade">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100"><h3 className="text-sm font-bold text-gray-700">SLA Configuration</h3><Btn size="sm" icon={Ic.Save} onClick={()=>toast('SLA rules saved','success')}>Save</Btn></div>
+      <div className="divide-y divide-gray-50">{sla.map((r,i)=><div key={r.p} className="px-5 py-4 flex items-center gap-5"><Bdg v={r.p} type="p"/><div className="flex-1 grid grid-cols-3 gap-4">
+        {[['First Response',r.first,'first'],['Resolution',r.res,'res'],['Escalate To',null,'esc',['Agent','Supervisor','Admin']]].map(([lbl,val,key,opts])=><div key={key}><p className="text-xs text-gray-400 font-bold uppercase mb-1.5">{lbl}</p>
+          {opts?<select value={r[key]} onChange={e=>setSla(p=>p.map((x,j)=>j===i?{...x,[key]:e.target.value}:x))} className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:border-noor-400 outline-none bg-white">{opts.map(o=><option key={o} value={o}>{o}</option>)}</select>
+          :<input value={r[key]} onChange={e=>setSla(p=>p.map((x,j)=>j===i?{...x,[key]:e.target.value}:x))} className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:border-noor-400 outline-none"/>}
+        </div>)}
+      </div></div>)}
+      </div>
+    </div>}
+    {tab==='categories'&&<div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 fade">
+      <h3 className="text-sm font-bold text-gray-700 mb-4">Ticket Categories</h3>
+      <div className="flex gap-3 mb-4"><input value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&newCat.trim()){setCats(p=>[...p,{name:newCat.trim(),active:true}]);setNewCat('');toast('Category added','success');}}} placeholder="New category name…" className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-xl focus:border-noor-400 outline-none"/><Btn size="sm" icon={Ic.Plus} onClick={()=>{if(!newCat.trim())return;setCats(p=>[...p,{name:newCat.trim(),active:true}]);setNewCat('');toast('Category added','success');}}>Add</Btn></div>
+      <div className="grid grid-cols-2 gap-2">{cats.map((c,i)=><div key={c.name} className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all ${c.active?'bg-white border-gray-200':'bg-gray-50 border-dashed border-gray-200 opacity-60'}`}>
+        <span className="text-sm text-gray-700 font-medium">{c.name}</span>
+        <div className="flex items-center gap-2"><Toggle value={c.active} onChange={()=>setCats(p=>p.map((x,j)=>j===i?{...x,active:!x.active}:x))}/><button onClick={()=>{setCats(p=>p.filter((_,j)=>j!==i));toast('Category removed','success');}} className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500"><Ic.Trash/></button></div>
+      </div>)}</div>
+    </div>}
+    {tab==='settings'&&<div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4 fade">
+      <h3 className="text-sm font-bold text-gray-700">System Settings</h3>
+      {[{l:'Maintenance Mode',d:'Disable access for non-admin users',def:false},{l:'Auto-assign tickets by branch',d:'Automatically assign new tickets to available agents',def:true},{l:'SLA breach notifications',d:'Send alerts when tickets breach their SLA deadline',def:true},{l:'Require category on ticket creation',d:'Users must select a category before submitting',def:true},{l:'Allow ticket reopening',d:'Allow users to reopen resolved tickets within 48 hours',def:true}].map(s=>{const [v,setV]=useState(s.def);return <div key={s.l} className="flex items-start justify-between p-4 bg-gray-50 rounded-xl border border-gray-200"><div><p className="text-sm font-semibold text-gray-700">{s.l}</p><p className="text-xs text-gray-400 mt-0.5">{s.d}</p></div><Toggle value={v} onChange={setV}/></div>;})}
+      <div className="flex justify-end pt-2 border-t border-gray-100"><Btn icon={Ic.Save} onClick={()=>toast('System settings saved','success')}>Save Settings</Btn></div>
+    </div>}
+  </div>;
+};
+
+/* ══════════════════════════════════════════════
+   SETTINGS (Admin)
+══════════════════════════════════════════════ */
+const SettingsPage=({toast})=>{
+  const [tab,setTab]=useState('smtp');
+  const [smtp,setSmtp]=useState({host:'smtp.mailgun.org',port:'587',tls:true,username:'postmaster@noor.ae',password:'',senderEmail:'support@noor.ae',senderName:'Noor Ticketing Support'});
+  const [sms,setSms]=useState({url:'https://api.twilio.com/2010-04-01/',username:'ACxxxxxxxx',password:'',apiKey:'',senderId:'NOOR'});
+  const [saving,setSaving]=useState(false);const [testing,setTesting]=useState(false);const [showPw,setShowPw]=useState(false);
+  const save=async()=>{setSaving(true);await new Promise(r=>setTimeout(r,900));setSaving(false);toast(`${tab.toUpperCase()} settings saved & encrypted`,'success');};
+  const test=async()=>{setTesting(true);await new Promise(r=>setTimeout(r,1800));setTesting(false);toast(Math.random()>0.3?`${tab==='smtp'?'Test email':'Test SMS'} sent successfully ✓`:'Connection failed — check your credentials','success');};
+  const tabs=[{id:'smtp',l:'Email SMTP',I:Ic.Mail},{id:'sms',l:'SMS Gateway',I:Ic.Chat},{id:'security',l:'Security',I:Ic.Shield}];
+  return <div className="space-y-4 fade">
+    <div><h1 className="text-xl font-bold text-gray-900">Settings</h1><p className="text-sm text-gray-500 mt-0.5">Email, SMS and security configuration</p></div>
+    <div className="flex gap-1 bg-white border border-gray-100 rounded-2xl shadow-sm p-1.5 w-fit">{tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${tab===t.id?'bg-noor-500 text-white':'text-gray-600 hover:bg-gray-100'}`}><t.I/>{t.l}</button>)}</div>
+    {tab==='smtp'&&<div className="bg-white rounded-2xl border border-gray-100 shadow-sm fade">
+      <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500"><Ic.Mail/></div><div><p className="text-sm font-bold text-gray-800">SMTP Email Configuration</p><p className="text-xs text-gray-400">Credentials encrypted with AES-256-GCM</p></div><span className="ml-auto flex items-center gap-1 text-xs text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded-lg font-semibold"><Ic.Lock/>Encrypted</span></div>
+      <div className="p-6 space-y-5">
+        <div className="grid grid-cols-3 gap-4"><div className="col-span-2"><Input label="SMTP Host" value={smtp.host} onChange={v=>setSmtp(p=>({...p,host:v}))} required placeholder="smtp.mailgun.org"/></div><Input label="Port" value={smtp.port} onChange={v=>setSmtp(p=>({...p,port:v}))} placeholder="587"/></div>
+        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200"><div><p className="text-sm font-semibold text-gray-700">Enable TLS / STARTTLS</p><p className="text-xs text-gray-400 mt-0.5">Required for most providers</p></div><Toggle value={smtp.tls} onChange={v=>setSmtp(p=>({...p,tls:v}))}/></div>
+        <div className="grid grid-cols-2 gap-4"><Input label="Username" value={smtp.username} onChange={v=>setSmtp(p=>({...p,username:v}))} icon={Ic.Person}/>
+          <div className="space-y-1.5"><label className="block text-xs font-bold text-gray-500 uppercase tracking-wide">Password</label><div className="relative"><div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Ic.Lock/></div><input type={showPw?'text':'password'} value={smtp.password} onChange={e=>setSmtp(p=>({...p,password:e.target.value}))} placeholder="SMTP password" className="w-full pl-9 pr-10 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-noor-400 outline-none"/><button onClick={()=>setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">{showPw?<Ic.EyeOff/>:<Ic.Eye/>}</button></div></div>
+        </div>
+        <div className="grid grid-cols-2 gap-4"><Input label="Sender Email" value={smtp.senderEmail} onChange={v=>setSmtp(p=>({...p,senderEmail:v}))} icon={Ic.Mail}/><Input label="Sender Name" value={smtp.senderName} onChange={v=>setSmtp(p=>({...p,senderName:v}))}/></div>
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100"><Btn variant="outline" icon={Ic.Activity} onClick={test} loading={testing}>Test Connection</Btn><Btn icon={Ic.Save} onClick={save} loading={saving}>Save Settings</Btn></div>
+      </div>
+    </div>}
+    {tab==='sms'&&<div className="bg-white rounded-2xl border border-gray-100 shadow-sm fade">
+      <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-green-50 flex items-center justify-center text-green-600"><Ic.Chat/></div><div><p className="text-sm font-bold text-gray-800">SMS Gateway Configuration</p><p className="text-xs text-gray-400">Supports Twilio, Unifonic, and custom REST</p></div></div>
+      <div className="p-6 space-y-5">
+        <Input label="Provider API URL" value={sms.url} onChange={v=>setSms(p=>({...p,url:v}))} required/>
+        <div className="grid grid-cols-2 gap-4"><Input label="Account SID / Username" value={sms.username} onChange={v=>setSms(p=>({...p,username:v}))}/><div className="space-y-1.5"><label className="block text-xs font-bold text-gray-500 uppercase tracking-wide">Auth Token</label><div className="relative"><div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Ic.Lock/></div><input type="password" value={sms.password} onChange={e=>setSms(p=>({...p,password:e.target.value}))} className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:border-noor-400 outline-none"/></div></div></div>
+        <div className="grid grid-cols-2 gap-4"><Input label="Sender ID (max 11 chars)" value={sms.senderId} onChange={v=>setSms(p=>({...p,senderId:v}))} placeholder="NOOR"/><Input label="API Key" value={sms.apiKey} onChange={v=>setSms(p=>({...p,apiKey:v}))}/></div>
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100"><Btn variant="outline" icon={Ic.Activity} onClick={test} loading={testing}>Send Test SMS</Btn><Btn icon={Ic.Save} onClick={save} loading={saving}>Save Settings</Btn></div>
+      </div>
+    </div>}
+    {tab==='security'&&<div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4 fade">
+      <h3 className="text-sm font-bold text-gray-700">Security Settings</h3>
+      {[['Two-Factor Authentication (2FA)','Require for all admin accounts',true],['Session timeout (30 min)','Auto-logout on inactivity',true],['Login rate limiting','Max 5 attempts per 15 minutes',true],['Audit logging','Log all configuration changes',true],['Force HTTPS','Redirect all HTTP to HTTPS',true]].map(([l,d,def])=>{const [v,setV]=useState(def);return <div key={l} className="flex items-start justify-between p-4 bg-gray-50 rounded-xl border border-gray-200"><div><p className="text-sm font-semibold text-gray-700">{l}</p><p className="text-xs text-gray-400 mt-0.5">{d}</p></div><Toggle value={v} onChange={setV}/></div>;})}
+      <div className="flex justify-end pt-2 border-t border-gray-100"><Btn icon={Ic.Save} onClick={()=>toast('Security settings saved','success')}>Save</Btn></div>
+    </div>}
+  </div>;
+};
+
+/* ══════════════════════════════════════════════
+   APP ROOT
+══════════════════════════════════════════════ */
+function App(){
+  const [currentUser,setCurrentUser]=useState(null);
+  const [page,setPage]=useState(null);
+  const [selTicket,setSelTicket]=useState(null);
+  const [collapsed,setCollapsed]=useState(false);
+  const [toast,setToast]=useState(null);
+  const [tickets]=useState(()=>mkTickets());
+
+  const showToast=(msg,type='success')=>setToast({msg,type});
+
+  const handleLogin=(user)=>{
+    setCurrentUser(user);
+    setPage(user.role==='End-User'?'my_tickets':'dashboard');
+  };
+  const handleLogout=()=>{setCurrentUser(null);setPage(null);setSelTicket(null);};
+
+  if(!currentUser)return<><LoginPage onLogin={handleLogin}/>{toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}</>;
+
+  const ml=collapsed?'ml-16':'ml-60';
+
+  // Counts for badge
+  const unreadMsgs=mkMessages().filter(m=>m.toId===currentUser.id&&!m.read).length;
+  const newTickets=tickets.filter(t=>t.status==='NEW').length;
+  const counts={tickets:newTickets,messages:unreadMsgs};
+
+  const renderPage=()=>{
+    switch(page){
+      case 'dashboard':     return <Dashboard tickets={tickets} setPage={setPage} setSelT={setSelTicket}/>;
+      case 'tickets':
+      case 'my_tickets':    return <TicketList tickets={tickets} setPage={setPage} setSelT={setSelTicket} currentUser={currentUser}/>;
+      case 'ticket_detail': return <TicketDetail ticket={selTicket} currentUser={currentUser} setPage={setPage} toast={showToast}/>;
+      case 'create_ticket': return <CreateTicket currentUser={currentUser} setPage={setPage} toast={showToast}/>;
+      case 'assets':
+      case 'my_assets':     return <Assets currentUser={currentUser} toast={showToast}/>;
+      case 'users':         return <UsersPage toast={showToast}/>;
+      case 'branches':      return <BranchesPage toast={showToast}/>;
+      case 'reports':       return <Reports tickets={tickets}/>;
+      case 'messages':      return <Messages currentUser={currentUser} toast={showToast}/>;
+      case 'settings':      return <SettingsPage toast={showToast}/>;
+      case 'master':        return <MasterConfig toast={showToast}/>;
+      default:              return <Dashboard tickets={tickets} setPage={setPage} setSelT={setSelTicket}/>;
+    }
+  };
+
+  return <div className="min-h-screen bg-gray-50">
+    <Sidebar user={currentUser} page={page} setPage={setPage} collapsed={collapsed} setCollapsed={setCollapsed} counts={counts} onLogout={handleLogout}/>
+    <div className={`${ml} transition-all duration-300 min-h-screen flex flex-col`}>
+      {/* Header */}
+      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-sm border-b border-gray-100 px-6 py-3 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <span className="font-bold text-noor-600">Noor</span>
+          <Ic.ChevR/>
+          <span className="font-semibold text-gray-700">{page==='my_tickets'?'My Tickets':page==='my_assets'?'My Assets':page==='ticket_detail'&&selTicket?selTicket.id:(page||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={()=>setPage('messages')} className="relative p-2 rounded-xl hover:bg-gray-100 text-gray-500 transition-colors">
+            <Ic.Chat/>{unreadMsgs>0&&<span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[9px] flex items-center justify-center rounded-full font-bold">{unreadMsgs}</span>}
+          </button>
+          <div className="flex items-center gap-2 pl-3 border-l border-gray-200">
+            <Av s={currentUser.av} size="sm" color={currentUser.role==='Admin'?'violet':'gold'}/>
+            <div className="hidden sm:block"><p className="text-xs font-bold text-gray-700">{currentUser.name}</p><p className="text-xs text-gray-400">{currentUser.role}{currentUser.empId?` · ${currentUser.empId}`:''}</p></div>
+          </div>
+        </div>
+      </header>
+      <main className="flex-1 p-6">{renderPage()}</main>
+    </div>
+    {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
